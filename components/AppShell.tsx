@@ -963,6 +963,27 @@ export function AppShell() {
       .catch(() => {});
   }, []);
 
+  // Open one session by id (Settings › Scheduled tasks links to the session a
+  // run produced). Reinstated for this fork: upstream 311a901 dropped the
+  // former `onOpenSession` prop when a sub-agent moved to the right panel.
+  const handleOpenSession = useCallback(async (sessionId: string) => {
+    // Prefer the catalogue the sidebar already delivered: selecting from it
+    // avoids a full detail round trip just to obtain the SessionInfo.
+    const catalogued = sessionCatalog.find((s) => s.id === sessionId);
+    if (catalogued && !catalogued.transient) {
+      handleSelectSession(catalogued);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+      const data = await response.json() as { info?: SessionInfo; error?: string };
+      if (!response.ok || !data.info) throw new Error(data.error ?? `HTTP ${response.status}`);
+      handleSelectSession(data.info);
+    } catch (error) {
+      console.error("[pi-web] failed to open session:", error instanceof Error ? error.message : error);
+    }
+  }, [handleSelectSession, sessionCatalog]);
+
   // Called by ChatWindow when a new session gets its real id from pi
   const handleSessionCreated = useCallback((session: SessionInfo, sourceDraftKey: string) => {
     setRefreshKey((k) => k + 1);
@@ -2773,6 +2794,12 @@ export function AppShell() {
           setModelsRefreshKey((key) => key + 1);
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
+        onOpenSession={(sessionId) => {
+          // Close Settings first: the session opens behind it, and leaving the
+          // dialog up would hide the run the user just asked to see.
+          setSettingsSection(null);
+          void handleOpenSession(sessionId);
+        }}
         projectTrust={projectTrust}
         onOpenTrustDialog={openProjectTrustDialog}
         onProjectTrustChanged={handleProjectTrustChanged}
