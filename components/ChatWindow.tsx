@@ -1128,19 +1128,9 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 // Not the entry id alone: a message sent or streamed in this run
                 // gets its id only when the file is read again (#1184).
                 const messageKey = messageKeys[idx];
-                let showTimestamp = false;
-                if (msg.role === "assistant") {
-                  showTimestamp = true;
-                  for (let j = idx + 1; j < messages.length; j++) {
-                    const r = messages[j].role;
-                    if (r === "user") break;
-                    if (r === "assistant") { showTimestamp = false; break; }
-                  }
-                  // Hide on the currently-streaming tail (the streaming bubble owns the live timestamp)
-                  if (showTimestamp && isStreaming && idx === messages.length - 1) {
-                    showTimestamp = false;
-                  }
-                }
+                // Every assistant message shows its own timestamp, including the
+                // tool-call steps of a turn and the still-running tail.
+                let showTimestamp = msg.role === "assistant";
                 if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
                 const view = (
                   <MessageView
@@ -1261,7 +1251,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                     attachRef: false,
                     keyPrefix: "process",
                     messageOverride: message,
-                    showTimestamp: false,
                     withNotices,
                   }));
                 }
