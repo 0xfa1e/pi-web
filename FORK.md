@@ -73,19 +73,14 @@ git rebase v0.12.0
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
 
-# 4) 校验，缺一不可
-npm install
-node_modules/.bin/tsc --noEmit
-npm run lint
-npm test
-npm run build
+# 4) 校验 + 构建 + 重启，一条命令
+#    它自己会跑 tsc / eslint，--with-tests 再加 npm test；
+#    健康检查 60 秒拿不到 200 会报错退出。
+scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
 git tag -f local-base v0.12.0
 git push --force-with-lease origin local
-
-# 6) 重启服务（生产模式）
-launchctl kickstart -k gui/$(id -u)/pi-web-local
 ```
 
 回滚：
@@ -94,9 +89,34 @@ launchctl kickstart -k gui/$(id -u)/pi-web-local
 git reflog                        # 找回 rebase 之前的 local
 git reset --hard local@{1}
 git tag -f local-base <旧 tag>
-npm install && npm run build
-launchctl kickstart -k gui/$(id -u)/pi-web-local
+scripts/local-deploy.sh --force-build
 ```
+
+## 部署
+
+```bash
+scripts/local-deploy.sh                # 体检 → npm install → tsc/eslint → 构建 → 重启 → 健康检查
+scripts/local-deploy.sh --check        # 只体检：看 .next 是否对得上当前源码，不做任何改动
+scripts/local-deploy.sh --with-tests   # 额外跑 npm test
+scripts/local-deploy.sh --skip-checks  # 跳过 tsc / eslint
+scripts/local-deploy.sh --force-build  # 即使 .next 已对应当前提交也重新构建
+scripts/local-deploy.sh --stop-during-build   # 构建期间先停服务（不抢 CPU，代价是停机）
+```
+
+`.next/.source-rev` 记录构建来源的 commit，脚本和启动入口都靠它判断产物是否过期；只有 `.md`
+改动时不算过期（别为 `FORK.md` 白烧半小时 CPU）。
+
+### 构建为什么不放进 launchd
+
+`pi-web-local` 是 `KeepAlive: true` 的 job，语义是「进程死了就再起」。如果把构建塞进这个 job：
+
+- 一次崩溃 → 一次 20~40 分钟的 webpack 重建，这段时间服务完全不提供
+- 构建失败 → 每 `ThrottleInterval`（10 秒）重试一次构建，变成崩溃循环
+- `RunAtLoad: true` → 每次开机都先等一轮构建才能用
+
+所以职责分开：**launchd 只跑已构建好的产物**（入口是 `scripts/local-launchd-start.sh`），
+**构建由 `scripts/local-deploy.sh` 负责**。启动入口只会在源码与 `.next` 不一致时往日志里写一行告警，
+绝不构建 —— 这样你按习惯直接 `launchctl kickstart -k` 时不会静默跑旧版本。
 
 ## 部署注意
 
