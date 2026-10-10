@@ -1,5 +1,11 @@
 # Pi Web - Development Notes
 
+> **⚠️ 部署 / 重启本项目：一律执行 `scripts/local-deploy.sh`**（完整体检 → install →
+> tsc/eslint → build → 重启 → 健康检查，见 [FORK.md](./FORK.md)）。
+> 这是一个 fork 的生产部署目录：服务由 launchd（label `pi-web-local`）以 `next start` 跑已构建的
+> 产物，所以「重启」必须包含重新构建。**不要**只跑 `launchctl kickstart -k gui/$(id -u)/pi-web-local`
+> —— 那只会用旧构建重启，改动不会生效。用户说「重启一下 / 重新部署 / 让改动生效」都是指这个脚本。
+
 ## Quick Start
 
 ```bash
@@ -9,6 +15,7 @@ npm run dev   # port 30141
 Typecheck: `node_modules/.bin/tsc --noEmit` · Lint: `npm run lint`
 
 **Never run `next build` during dev**: it pollutes `.next/` and breaks `npm run dev`.
+（生产部署是另一条路径，本来就要构建：见文件开头的 `scripts/local-deploy.sh`。）
 
 ### Dev server troubleshooting
 

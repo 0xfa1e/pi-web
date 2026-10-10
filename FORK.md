@@ -94,6 +94,10 @@ scripts/local-deploy.sh --force-build
 
 ## 部署
 
+仓库根的 `AGENTS.md` 开头写了一条硬规则，指向 `scripts/local-deploy.sh` —— 那是 Pi / Codex 等
+agent 进这个仓库时一定会读到的位置，所以「重启一下」不会退化成只跑 `launchctl kickstart`。
+（本机 `~/.pi/agent/AGENTS.md` 和 `~/.codex/AGENTS.md` 也各有一份简版，覆盖从别的目录提问的情况。）
+
 ```bash
 scripts/local-deploy.sh                # 体检 → npm install → tsc/eslint → 构建 → 重启 → 健康检查
 scripts/local-deploy.sh --check        # 只体检：看 .next 是否对得上当前源码，不做任何改动
