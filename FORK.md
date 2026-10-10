@@ -107,8 +107,9 @@ scripts/local-deploy.sh --force-build  # 即使 .next 已对应当前提交也�
 scripts/local-deploy.sh --stop-during-build   # 构建期间先停服务（不抢 CPU，代价是停机）
 ```
 
-`.next/.source-rev` 记录构建来源的 commit，脚本和启动入口都靠它判断产物是否过期；只有 `.md`
-改动时不算过期（别为 `FORK.md` 白烧半小时 CPU）。
+`.next/.source-rev` 记录构建来源的 commit，脚本和启动入口都靠它判断产物是否过期。`docs/`、
+`scripts/`、`.github/` 和 `*.md` 不参与 `next build`，改动到这些路径不算过期（别为 `FORK.md`
+白烧半小时 CPU）。
 
 ### 构建为什么不放进 launchd
 
