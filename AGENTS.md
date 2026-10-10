@@ -4,7 +4,7 @@
 > tsc/eslint → build → 重启 → 健康检查，见 [FORK.md](./FORK.md)）。
 > 这是一个 fork 的生产部署目录：服务由 launchd（label `pi-web-local`）以 `next start` 跑已构建的
 > 产物，所以「重启」必须包含重新构建。**不要**只跑 `launchctl kickstart -k gui/$(id -u)/pi-web-local`
-> —— 那只会用旧构建重启，改动不会生效。用户说「重启一下 / 重新部署 / 让改动生效」都是指这个脚本。
+> —— 那只会用旧构建重启，改动不会生效。在本仓库里，用户说「重启一下这个项目 / 重新部署 / 让改动生效」都是指这个脚本。
 
 ## Quick Start
 
