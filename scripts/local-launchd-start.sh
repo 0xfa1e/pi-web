@@ -20,10 +20,11 @@ built="$(cat .next/.source-rev 2>/dev/null || echo '')"
 if [ "$built" = "$rev" ]; then
   echo "[pi-web-local] .next 对应当前提交 ${rev:0:7}"
 else
-  # 只有 .md 改动时构建产物其实没变（FORK.md 这种），别为它刷告警
-  code_changes="$(git diff --name-only "$built" "$rev" 2>/dev/null | grep -v '\.md$' | head -8 || true)"
+  # 文档和本 fork 自己的脚本不参与 next build，别为它们刷告警
+  code_changes="$(git diff --name-only "$built" "$rev" 2>/dev/null \
+    | grep -vE '^(docs/|scripts/|\.github/)|\.md$' | head -8 || true)"
   if [ -n "$built" ] && [ -z "$code_changes" ]; then
-    echo "[pi-web-local] .next 对应当前提交（自 ${built:0:7} 起只有文档改动）"
+    echo "[pi-web-local] .next 对应当前提交（自 ${built:0:7} 起只有文档/脚本改动）"
   else
     echo "[pi-web-local] 警告：.next 不是当前源码构建的（HEAD=${rev:0:7}，.next=${built:-无标记}）"
     echo "[pi-web-local] 现在按旧构建产物启动。重新部署请运行：scripts/local-deploy.sh"

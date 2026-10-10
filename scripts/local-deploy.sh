@@ -74,11 +74,14 @@ elif [ "$built" = "$rev" ]; then
   need_build=0
   log ".next 已经是这个提交构建的，跳过构建"
 else
-  # 文档改动不影响构建产物，别为 FORK.md 这种改动白烧半小时 CPU
-  code_changes="$(git diff --name-only "$built" "$rev" 2>/dev/null | grep -v '\.md$' | head -8 || true)"
+  # 这些路径不参与 next build（文档、本 fork 自己的部署脚本、CI 配置），别为它们
+  # 白烧半小时 CPU。启发式名单：改动落在 app/ components/ lib/ hooks/ public/
+  # 或根配置文件上就一定会触发重建。
+  code_changes="$(git diff --name-only "$built" "$rev" 2>/dev/null \
+    | grep -vE '^(docs/|scripts/|\.github/)|\.md$' | head -8 || true)"
   if [ -z "$code_changes" ]; then
     need_build=0
-    log "自 ${built:0:7} 起只有 .md 改动，跳过构建"
+    log "自 ${built:0:7} 起只有文档/脚本改动，跳过构建"
   else
     log ".next 由 ${built:0:7} 构建，需要重新构建："
     printf '      %s\n' $code_changes
