@@ -41,19 +41,41 @@ git diff --stat local-base..local       # 补丁改动面
 
 ### 改动面
 
-以 `v0.11.0` 为基准，只**修改**了 10 个文件，其余都是新增：
+以 `v0.12.1` 为基准，只**修改**了 11 个文件，其余都是新增：
 
 ```
-app/settings.css                    components/AppShell.tsx
-components/ChatWindow.tsx           components/MessageView.tsx
-components/SettingsPanel.tsx        instrumentation-node.ts
+AGENTS.md                           app/settings.css
+components/AppShell.tsx             components/ChatWindow.tsx
+components/MessageView.tsx          components/SettingsPanel.tsx
+instrumentation-node.ts             lib/settings-navigation.ts
 lib/i18n/messages/{en,zh-CN,zh-TW}.ts
-lib/settings-navigation.ts
 ```
 
 新增：`app/api/schedules/`、`components/SchedulesConfig.tsx`、`lib/schedule-{cron,runner,store}.ts`
-及其测试。**冲突只会落在那 10 个文件里**，其中 `lib/settings-navigation.ts` 和
-`instrumentation-node.ts` 上游几乎不动。
+及其测试，外加本 fork 自己的 `scripts/local-deploy.sh` / `local-launchd-start.sh`。**冲突只会落在那
+11 个文件里**，其中 `lib/settings-navigation.ts`、`instrumentation-node.ts`、`AGENTS.md` 上游几乎不动。
+
+### 同步上游时已知的坑（每次 rebase 都看一遍）
+
+1. **`components/AppShell.tsx` → `handleOpenSession` 会被上游删掉**（实测于 v0.12.1）。上游
+   `311a901 feat(agents): view sub-agent work in a right-panel tab` 把 `onOpenSession` 换成了
+   `onOpenSubagent(sessionId, label)`，顺手删掉了「按 id 打开会话」的 `handleOpenSession`。
+   我们的 `SchedulesConfig` 仍然要「打开这次运行产生的会话」，所以 rebase 后必须在 AppShell 里
+   把这个 helper 重新加回来，并接到 SettingsPanel 的 `onOpenSession` 上。**这个断链不会产生冲突**
+   —— 补丁能干净应用，然后 `tsc` 报 `Cannot find name 'handleOpenSession'`。所以 rebase 之后
+   **必须跑一次 `tsc`**，不能只看「没有 conflict」。
+2. **`components/ChatWindow.tsx` → 时间戳补丁必然冲突**。上游把 `streamState.isStreaming` 重命名成
+   `isStreaming`（同一块上下文），冲突解决方式就是**整块取我们的版本**：
+   `let showTimestamp = msg.role === "assistant";`（我们不再引用 `isStreaming`）。同一补丁里
+   process-details 分组的 `showTimestamp: false` 会被自动合掉，确认 `git grep showTimestamp`
+   只剩「options 声明 / 我们的赋值 / 传给 MessageView」三处即可。已开 rerere，第二次会自动重放。
+3. **`instrumentation-node.ts` → 两边都要保留**。上游往这里加 `readHttpIdleTimeoutMs()` 和
+   预热 pi SDK 的 `import("@earendil-works/pi-coding-agent")`，我们加 `startScheduleRunner()` /
+   `stopScheduleRunner()`。合并后必须是：`configureHttpDispatcher(readHttpIdleTimeoutMs())`、紧跟
+   `startScheduleRunner()`、`shutdownStreams` 里先 `stopScheduleRunner()` 再关流、末尾保留 SDK 预热。
+4. **`app/settings.css` / i18n / `SettingsPanel.tsx` 一般不冲突**，因为两边改的是同文件的不同行区
+   （上游改 `GeneralSettings`、skill/mcp 样式；我们改 dialog 宽度、tab 布局、schedules 文案）。
+   真冲突时按「两边都留」处理：schedules 那个 tab 是我们加的，不能为了省事丢掉。
 
 ## 同步上游新版本（runbook）
 
@@ -68,10 +90,12 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 
 # 3) 把补丁搬到新版本上（换成你要跑的上游 release tag）
 git checkout local
-git rebase v0.12.0
+git rebase v0.12.1
 #   冲突：改完 → git add <file> → git rebase --continue
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
+#   解决完先按上面「已知的坑」自查一遍，尤其要跑 tsc：没有 conflict 不等于能编译
+node_modules/.bin/tsc --noEmit
 
 # 4) 校验 + 构建 + 重启，一条命令
 #    它自己会跑 tsc / eslint，--with-tests 再加 npm test；
@@ -79,7 +103,7 @@ git rebase v0.12.0
 scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
-git tag -f local-base v0.12.0
+git tag -f local-base v0.12.1
 git push --force-with-lease origin local
 ```
 
