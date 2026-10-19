@@ -1254,6 +1254,9 @@ export function AppShell() {
     if (toolEndRefreshTimerRef.current) clearTimeout(toolEndRefreshTimerRef.current);
   }, []);
 
+  // Selects a session id that was just created elsewhere (a branch fork, a
+  // window that ran a selection). The row the sidebar shows comes from the
+  // refresh; the id is known first, so it is selected without waiting for it.
   const handleSessionForked = useCallback((newSessionId: string) => {
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
@@ -1269,6 +1272,20 @@ export function AppShell() {
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [invalidateWorkspaceRestore, router, hydrateSelectedSession]);
 
+  // 「New session」 with the selection already in the composer: the server creates
+  // the session and prompts it in one request (the entry point a scheduled run
+  // uses), then this window switches to it like any other new session — the
+  // selection is the whole prompt, so nothing is quoted and nothing is forked.
+  const handleRunInNewSession = useCallback(async (prompt: string, cwd: string) => {
+    const res = await fetch("/api/agent/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, type: "prompt", message: prompt }),
+    });
+    const body = await res.json().catch(() => null) as { sessionId?: string; error?: string } | null;
+    if (!res.ok || !body?.sessionId) throw new Error(body?.error ?? `HTTP ${res.status}`);
+    handleSessionForked(body.sessionId);
+  }, [handleSessionForked]);
   // The sidebar calls this when the initial session is not in its list.
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -2867,6 +2884,8 @@ export function AppShell() {
               onOpenFile={handleOpenLinkedFile}
               onFilesUploaded={handleExplorerRefresh}
               onOpenSubagent={handleOpenSubagentTab}
+              onOpenSubagent={handleOpenSubagentTab}
+              onRunInNewSession={handleRunInNewSession}
               quoteSelectionEnabled={quoteSelectionEnabled}
               soundEnabled={soundEnabled}
               onSoundToggle={onSoundToggle}

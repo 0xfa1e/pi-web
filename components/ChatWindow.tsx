@@ -87,6 +87,8 @@ interface Props {
   /** Files dropped onto the chat were written into the working directory. */
   onFilesUploaded?: () => void;
   onOpenSubagent?: (sessionId: string, label: string) => void;
+  /** Runs the selected text as the first prompt of a brand-new session. */
+  onRunInNewSession?: (prompt: string, cwd: string) => Promise<void>;
   quoteSelectionEnabled?: boolean;
   initialPrompt?: string;
   onInitialPromptConsumed?: () => void;
@@ -254,7 +256,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, durationMs, cacheMis
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, newSessionContextBar, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked, panel = false, onSideSession, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onDebugSnapshotReaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, onFilesUploaded, onOpenSubagent, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, newSessionContextBar, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked, panel = false, onSideSession, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onDebugSnapshotReaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, onFilesUploaded, onOpenSubagent, onRunInNewSession, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = !isHiddenRelation(session?.relation);
@@ -458,6 +460,27 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     chatInputRef?.current?.restoreSubmission(message);
     addNotice({ type: "error", message: refusal });
   }, [addNotice, chatInputRef, startSideChat]);
+
+  // Unlike the two buttons before it, this one does not quote the text into a
+  // composer and does not need an assistant entry to fork from: the selection is
+  // the prompt of a fresh session, which the composer then shows like any other
+  // new one (running, listed in the sidebar, the selection already sent).
+  const runSelectionInNewSession = useCallback(async () => {
+    const cwd = session?.cwd ?? newSessionCwd;
+    if (!quotedSelection || quoteSubmitting || !onRunInNewSession || !cwd) return;
+    setQuoteSubmitting(true);
+    setQuoteError(null);
+    unlockAudio?.();
+    try {
+      await onRunInNewSession(quotedSelection.text, cwd);
+      window.getSelection()?.removeAllRanges();
+      closeQuotedSelection();
+    } catch (error) {
+      setQuoteError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setQuoteSubmitting(false);
+    }
+  }, [onRunInNewSession, quotedSelection, quoteSubmitting, session?.cwd, newSessionCwd, closeQuotedSelection, unlockAudio]);
 
   const initialPromptSentRef = useRef(false);
   useEffect(() => {
@@ -1443,6 +1466,26 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               </svg>
               <span>{t("chat.askInSideChat")}</span>
             </button>
+          )}
+          {onRunInNewSession && (session?.cwd ?? newSessionCwd) && (
+            <button
+              type="button"
+              className="file-viewer-icon-button"
+              title={t("chat.runInNewSession")}
+              aria-label={t("chat.runInNewSession")}
+              disabled={quoteSubmitting}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void runSelectionInNewSession()}
+              style={{ width: "auto", height: 35, flex: "0 0 auto", gap: 5, padding: "0 10px", border: "none", fontSize: 12, fontWeight: 500 }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M14 4h6v6M20 4l-8 8M17.5 13.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1h5.5" />
+              </svg>
+              <span>{t("chat.runInNewSession")}</span>
+            </button>
+          )}
+          {quoteError && !quoteInputOpen && (
+            <div role="alert" style={{ flex: "1 0 100%", maxWidth: 260, color: "#dc2626", fontSize: 12, overflowWrap: "anywhere" }}>{quoteError}</div>
           )}
           </>}
         </div>,

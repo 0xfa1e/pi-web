@@ -848,6 +848,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.quoteSelection": "引用",
     "chat.askInSideChat": "在侧聊询问",
     "chat.newQuoteChat": "关于选中文字的侧聊",
+    "chat.runInNewSession": "新建会话执行",
     "chat.attachFiles": "附加文件",
     "chat.previewImage": "预览图片",
     "chat.filterModels": "筛选模型…",
