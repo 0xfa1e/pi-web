@@ -28,6 +28,20 @@ git diff --stat local-base..local       # 补丁改动面
    上限时按各自内容宽度收缩导致宽度不一，改成 `flex: 1 1 0` 均分。
 3. **`fix(chat): show every assistant message timestamp in 24-hour time`** — 一条 assistant 消息
    只显示最后一个时间戳、且用 `toLocaleTimeString` 输出 AM/PM；改成每条都显示、固定 24 小时制。
+4. **`feat(chat): run the selected text as a prompt in a new session`** — 选中文字后的浮动按钮多一个
+   「新建会话执行」：选中内容**原样当 prompt**，`POST /api/agent/new {cwd, type:"prompt", message}`
+   一次请求建好新会话并跑起来，然后本窗口像点会话列表一样切到它（`openCreatedSession()`，和
+   `handleSessionForked` 同一条路），侧边栏刷新出这一行。**不新开浏览器标签页**：它本质是「新建
+   会话 + 自动提交」的快捷方式，界面表现和新建一致。
+   和另外两个按钮的区别：不包引用块、不 fork（不需要 `sourceEntryId`）、不需要当前对话正在跑。
+   同一个动作还有第二个入口：聊天里每个代码块的头部（`复制` 左边）。入口由
+   `components/selection-actions.tsx` 的 context 提供，Provider 只挂在 AppShell 的 `<ChatWindow>` 外面，
+   所以文件查看器里同样的 `CodeBlock` 不会长出这两个按钮。
+5. **`feat(chat): start a scheduled task from the selected text`** — 选中文字后的浮动按钮再多一个
+   「新建定时任务」：打开 设置 › 定时任务 并直接展开新建表单，提示词就是选中的文字，工作目录取当前
+   会话的项目。数据流：`ChatWindow` → `AppShell.handleNewScheduledTask`（设 `schedulePrompt` 并切到
+   `schedules` 章节）→ `SettingsPanel` → `SchedulesConfig.initialPrompt`（填进草稿后立刻消费掉）。
+   它建立在补丁 1 上，上游既已婉拒定时任务，这个也不提。代码块头部的入口同上（同一个 context）。
 
 ### 为什么上游不收（PR #1105，2026-10-09，agegr 亲答）
 
@@ -37,23 +51,25 @@ git diff --stat local-base..local       # 补丁改动面
 > job or a pi extension that runs `pi` on a timer. Closing as not planned.
 
 这是**设计取向上的婉拒，不是代码质量问题** —— 不要反复重提。补丁 2、3 是纯 UI 修正，同理按本地
-补丁维护。
+补丁维护。补丁 4 是上游没有的能力（它的「在新对话询问」只能 fork 出一条引用链），自用即可。
 
 ### 改动面
 
-以 `v0.12.1` 为基准，只**修改**了 11 个文件，其余都是新增：
+以 `v0.12.2` 为基准，只**修改**了 12 个文件，其余都是新增：
 
 ```
 AGENTS.md                           app/settings.css
 components/AppShell.tsx             components/ChatWindow.tsx
-components/MessageView.tsx          components/SettingsPanel.tsx
+components/MermaidBlock.tsx         components/MessageView.tsx
+components/SettingsPanel.tsx
 instrumentation-node.ts             lib/settings-navigation.ts
 lib/i18n/messages/{en,zh-CN,zh-TW}.ts
 ```
 
-新增：`app/api/schedules/`、`components/SchedulesConfig.tsx`、`lib/schedule-{cron,runner,store}.ts`
-及其测试，外加本 fork 自己的 `scripts/local-deploy.sh` / `local-launchd-start.sh`。**冲突只会落在那
-11 个文件里**，其中 `lib/settings-navigation.ts`、`instrumentation-node.ts`、`AGENTS.md` 上游几乎不动。
+新增：`app/api/schedules/`、`components/SchedulesConfig.tsx`、`lib/schedule-{cron,runner,store}.ts`、
+`components/selection-actions.tsx`、`components/ChatWindow.selection-actions.test.mjs`，外加本 fork
+自己的 `scripts/local-deploy.sh` / `local-launchd-start.sh`。**冲突只会落在那 12 个文件里**，其中 `lib/settings-navigation.ts`、
+`instrumentation-node.ts`、`AGENTS.md`、`components/selection-actions.tsx` 上游几乎不动。
 
 ### 同步上游时已知的坑（每次 rebase 都看一遍）
 
@@ -64,11 +80,15 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    把这个 helper 重新加回来，并接到 SettingsPanel 的 `onOpenSession` 上。**这个断链不会产生冲突**
    —— 补丁能干净应用，然后 `tsc` 报 `Cannot find name 'handleOpenSession'`。所以 rebase 之后
    **必须跑一次 `tsc`**，不能只看「没有 conflict」。
-2. **`components/ChatWindow.tsx` → 时间戳补丁必然冲突**。上游把 `streamState.isStreaming` 重命名成
-   `isStreaming`（同一块上下文），冲突解决方式就是**整块取我们的版本**：
-   `let showTimestamp = msg.role === "assistant";`（我们不再引用 `isStreaming`）。同一补丁里
-   process-details 分组的 `showTimestamp: false` 会被自动合掉，确认 `git grep showTimestamp`
-   只剩「options 声明 / 我们的赋值 / 传给 MessageView」三处即可。已开 rerere，第二次会自动重放。
+2. **`components/ChatWindow.tsx` → 时间戳补丁必然冲突，而且是两块**（v0.12.2 实测）。原因：
+   上游把渲染 key 从 `entryIds[idx] ?? idx` 换成了 `messageKeys[idx]`（新增 `lib/message-keys.ts`），
+   又给 `renderMessage` 的 options 加了 `withNotices`，两处都跟我们的补丁重叠。解决方式：
+   - 第一块：`const messageKey = messageKeys[idx];` **取上游的**（别退回 `entryIds`），`showTimestamp`
+     取我们的一行 `let showTimestamp = msg.role === "assistant";`（不再引用 `isStreaming`）。
+   - 第二块（process-details 分组）：保留上游的 `withNotices,`，继续删掉我们删掉的 `showTimestamp: false`。
+   校验：`git grep -n showTimestamp components/ChatWindow.tsx` 只剩「options 声明 / 我们的赋值 /
+   options 覆盖 / 传给 MessageView」四处，且文件里不再有冲突标记。已开 rerere，第二次会自动重放——
+   但**只用 rerere 自动结果不够，必须再跑 `tsc`**（2026-10 这次 rerere 记录的旧解只覆盖了第一块）。
 3. **`instrumentation-node.ts` → 两边都要保留**。上游往这里加 `readHttpIdleTimeoutMs()` 和
    预热 pi SDK 的 `import("@earendil-works/pi-coding-agent")`，我们加 `startScheduleRunner()` /
    `stopScheduleRunner()`。合并后必须是：`configureHttpDispatcher(readHttpIdleTimeoutMs())`、紧跟
@@ -86,11 +106,15 @@ cd /Users/mac/dev-project/pi-web
 git fetch upstream --tags
 
 # 2) 镜像 main（只会 fast-forward，不会有冲突）
+#    main 跟的是 upstream/main，通常已经跑到最新 release tag 前面几个未发版提交：
+#    镜像的是「上游现状」，而 local 只给自己发过版的 tag 打补丁。
 git checkout main && git merge --ff-only upstream/main && git push origin main
 
 # 3) 把补丁搬到新版本上（换成你要跑的上游 release tag）
+#    动手前先确保 local 工作区是干净的：有未提交的 fork 改动就先 commit，不然会跟着 rebase 跑
+git status --short
 git checkout local
-git rebase v0.12.1
+git rebase v0.12.2
 #   冲突：改完 → git add <file> → git rebase --continue
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
@@ -103,7 +127,7 @@ node_modules/.bin/tsc --noEmit
 scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
-git tag -f local-base v0.12.1
+git tag -f local-base v0.12.2
 git push --force-with-lease origin local
 ```
 
