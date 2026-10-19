@@ -1122,7 +1122,10 @@ export function AppShell() {
     if (toolEndRefreshTimerRef.current) clearTimeout(toolEndRefreshTimerRef.current);
   }, []);
 
-  const handleSessionForked = useCallback((newSessionId: string) => {
+  // Selects a session id that was just created elsewhere (a branch fork, a
+  // window that ran a selection). The row the sidebar shows comes from the
+  // refresh; the id is known first, so it is selected without waiting for it.
+  const openCreatedSession = useCallback((newSessionId: string) => {
     invalidateWorkspaceRestore();
     activeNewSessionDraftKeyRef.current = null;
     setRefreshKey((k) => k + 1);
@@ -1148,8 +1151,23 @@ export function AppShell() {
     });
     if (!result?.newSessionId) throw new Error(translate("chat.quoteForkFailed"));
     setPendingQuotePrompt({ sessionId: result.newSessionId, text: prompt });
-    handleSessionForked(result.newSessionId);
-  }, [handleSessionForked, translate]);
+    openCreatedSession(result.newSessionId);
+  }, [openCreatedSession, translate]);
+
+  // 「New session」 with the selection already in the composer: the server creates
+  // the session and prompts it in one request (the entry point a scheduled run
+  // uses), then this window switches to it like any other new session — the
+  // selection is the whole prompt, so nothing is quoted and nothing is forked.
+  const handleRunInNewSession = useCallback(async (prompt: string, cwd: string) => {
+    const res = await fetch("/api/agent/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd, type: "prompt", message: prompt }),
+    });
+    const body = await res.json().catch(() => null) as { sessionId?: string; error?: string } | null;
+    if (!res.ok || !body?.sessionId) throw new Error(body?.error ?? `HTTP ${res.status}`);
+    openCreatedSession(body.sessionId);
+  }, [openCreatedSession]);
 
   // The sidebar calls this when the initial session is not in its list.
   const handleInitialRestoreDone = useCallback(() => {
@@ -2575,7 +2593,7 @@ export function AppShell() {
               onToolEnd={handleToolEnd}
               onAttentionNeeded={handleAttentionNeeded}
               onSessionCreated={handleSessionCreated}
-              onSessionForked={handleSessionForked}
+              onSessionForked={openCreatedSession}
               modelsRefreshKey={modelsRefreshKey}
               chatInputRef={chatInputRef}
               onBranchDataChange={handleBranchDataChange}
@@ -2590,6 +2608,7 @@ export function AppShell() {
               onFilesUploaded={handleExplorerRefresh}
               onOpenSubagent={handleOpenSubagentTab}
               onAskInNewChat={handleAskInNewChat}
+              onRunInNewSession={handleRunInNewSession}
               quoteSelectionEnabled={quoteSelectionEnabled}
               initialPrompt={pendingQuotePrompt?.sessionId === selectedSession?.id ? pendingQuotePrompt?.text : undefined}
               onInitialPromptConsumed={() => setPendingQuotePrompt(null)}
