@@ -56,6 +56,9 @@ interface Props {
   onProjectTrustChanged?: (cwd: string, status: ProjectTrustStatus) => void;
   /** Opens a session by id; Settings › Scheduled tasks links to the session a run produced. */
   onOpenSession?: (sessionId: string) => void;
+  /** A prompt the chat handed to Settings › Scheduled tasks' new-task form. */
+  schedulePrompt?: string | null;
+  onSchedulePromptConsumed?: () => void;
 }
 
 export function SettingsSectionIcon({ section, size = 16, strokeWidth = 1.8 }: { section: SettingsSection; size?: number; strokeWidth?: number }) {
@@ -605,6 +608,8 @@ export function SettingsPanel({
   onOpenTrustDialog,
   onProjectTrustChanged,
   onOpenSession,
+  schedulePrompt,
+  onSchedulePromptConsumed,
 }: Props) {
   const { t } = useI18n();
   const [section, setSection] = useState<SettingsSection>(initialSection);
@@ -677,11 +682,15 @@ export function SettingsPanel({
     setLastSettingsSection("general");
   }, [cwd, sectionRequiresProject]);
 
-  const activateSection = (nextSection: SettingsSection) => {
+  const activateSection = useCallback((nextSection: SettingsSection) => {
     setMountedSections((current) => new Set(current).add(nextSection));
     setSection(nextSection);
     setLastSettingsSection(nextSection);
-  };
+  }, []);
+
+  // Callers outside the dialog (the composer's bare /mcp, a chat selection asking
+  // for a scheduled task) can ask for another section while Settings is open.
+  useEffect(() => activateSection(initialSection), [activateSection, initialSection]);
 
   const openSectionFromHome = (nextSection: SettingsSection) => {
     activateSection(nextSection);
@@ -798,7 +807,7 @@ export function SettingsPanel({
           {/* No project needed: the global mcp.json is listed alone, and a project adds its group. */}
           {sectionHost("mcp", <McpConfig embedded key={cwd ?? ""} cwd={cwd} trust={projectTrust} onTrustProject={onOpenTrustDialog} onProjectTrustChanged={onProjectTrustChanged} onClose={onClose} />)}
           {/* Scheduled tasks are global, so this section works without a project. */}
-          {sectionHost("schedules", <SchedulesConfig embedded cwd={cwd} onClose={onClose} onOpenSession={onOpenSession} />)}
+          {sectionHost("schedules", <SchedulesConfig embedded cwd={cwd} onClose={onClose} onOpenSession={onOpenSession} initialPrompt={schedulePrompt} onInitialPromptConsumed={onSchedulePromptConsumed} />)}
           </ConfigDetailNavigationContext.Provider>
         </main>
       </div>

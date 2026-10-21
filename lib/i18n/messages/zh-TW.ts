@@ -849,6 +849,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.askInSideChat": "在側聊詢問",
     "chat.newQuoteChat": "關於選取文字的側聊",
     "chat.runInNewSession": "新建對話執行",
+    "chat.newScheduledTask": "新建定時任務",
     "chat.attachFiles": "附加檔案",
     "chat.previewImage": "預覽圖片",
     "chat.filterModels": "篩選模型…",

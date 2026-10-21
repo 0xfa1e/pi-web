@@ -236,6 +236,9 @@ export function AppShell() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   // The plain Settings button opens a phone's Settings on its list of sections; shortcuts open theirs.
   const [settingsOpenAtHome, setSettingsOpenAtHome] = useState(false);
+  // A selection the chat turned into a scheduled task: Settings › Scheduled tasks
+  // opens its new-task form on it, then clears it.
+  const [schedulePrompt, setSchedulePrompt] = useState<string | null>(null);
   const [modelsRefreshKey, setModelsRefreshKey] = useState(0);
   const [projectTrust, setProjectTrust] = useState<ProjectTrustStatus | null>(null);
   const [projectTrustDialogOpen, setProjectTrustDialogOpen] = useState(false);
@@ -1286,6 +1289,13 @@ export function AppShell() {
     if (!res.ok || !body?.sessionId) throw new Error(body?.error ?? `HTTP ${res.status}`);
     handleSessionForked(body.sessionId);
   }, [handleSessionForked]);
+
+  // The selected text becomes a scheduled task's prompt instead of a session's:
+  // Settings opens on the section that holds the form, which is filled from here.
+  const handleNewScheduledTask = useCallback((prompt: string) => {
+    setSchedulePrompt(prompt);
+    setSettingsSection("schedules");
+  }, []);
   // The sidebar calls this when the initial session is not in its list.
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -2884,8 +2894,8 @@ export function AppShell() {
               onOpenFile={handleOpenLinkedFile}
               onFilesUploaded={handleExplorerRefresh}
               onOpenSubagent={handleOpenSubagentTab}
-              onOpenSubagent={handleOpenSubagentTab}
               onRunInNewSession={handleRunInNewSession}
+              onNewScheduledTask={handleNewScheduledTask}
               quoteSelectionEnabled={quoteSelectionEnabled}
               soundEnabled={soundEnabled}
               onSoundToggle={onSoundToggle}
@@ -3111,6 +3121,8 @@ export function AppShell() {
           setModelsRefreshKey((key) => key + 1);
         }}
         onSessionReloaded={() => setSessionKey((key) => key + 1)}
+        schedulePrompt={schedulePrompt}
+        onSchedulePromptConsumed={() => setSchedulePrompt(null)}
         onOpenSession={(sessionId) => {
           // Close Settings first: the session opens behind it, and leaving the
           // dialog up would hide the run the user just asked to see.

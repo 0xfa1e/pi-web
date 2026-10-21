@@ -849,6 +849,7 @@ export const enLocale: LocalePlugin = {
     "chat.askInSideChat": "Ask in side chat",
     "chat.newQuoteChat": "Side chat about selected text",
     "chat.runInNewSession": "Run in new session",
+    "chat.newScheduledTask": "New scheduled task",
     "chat.attachFiles": "Attach files",
     "chat.previewImage": "Preview image",
     "chat.filterModels": "Filter models…",
