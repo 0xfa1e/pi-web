@@ -29,3 +29,16 @@ test("the new-session run creates the session and shows it in this window", () =
     "the run must not open a browser window; it behaves like the sidebar's New session",
   );
 });
+
+test("the selection toolbar can start a scheduled task instead", () => {
+  const button = chatSource.match(/\{onNewScheduledTask && \(session\?\.cwd \?\? newSessionCwd\) && \([\s\S]*?chat\.newScheduledTask[\s\S]*?\n          \)\}/);
+  assert.ok(button, "expected the new-scheduled-task button gated on a working directory");
+  // Settings opens on its new-task form, which is filled from the handler below.
+  const handler = shellSource.match(/const handleNewScheduledTask = useCallback\([\s\S]*?\n  \}, \[\]\);/);
+  assert.ok(handler, "expected the handleNewScheduledTask handler");
+  assert.match(handler[0], /setSchedulePrompt\(prompt\)/);
+  assert.match(handler[0], /setSettingsSection\("schedules"\)/);
+  const panel = shellSource.match(/schedulePrompt=\{schedulePrompt\}[\s\S]{0,120}/);
+  assert.ok(panel, "expected SettingsPanel to receive the prompt");
+  assert.match(panel[0], /onSchedulePromptConsumed=/);
+});
