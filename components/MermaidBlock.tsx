@@ -6,6 +6,7 @@ import { vs } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { useTheme } from "@/hooks/useTheme";
 import { useI18n } from "@/hooks/useI18n";
+import { useSelectionActions } from "./selection-actions";
 import { usePrismLanguages } from "@/hooks/usePrismLanguages";
 import { copyText } from "@/lib/clipboard";
 import { takeHighlightBudget, waitForHighlight } from "@/lib/highlight-queue";
@@ -287,6 +288,7 @@ delete codeBlockDarkTheme['pre[class*="language-"]'].background;
 export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isStreaming }: CodeBlockProps) {
   const { isDark } = useTheme();
   const { t } = useI18n();
+  const selectionActions = useSelectionActions();
   const [copied, setCopied] = useState(false);
   // Loading starts with the first block, streaming or not, so a streamed
   // reply usually finds the languages ready when it ends.
@@ -313,6 +315,29 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
         <span className="markdown-code-lang">{lang || "text"}</span>
         <div className="markdown-code-actions">
           {headerAction}
+          {/* The same two actions the selection toolbar offers, on text this
+              block already has: the block is the prompt. Not while it is still
+              streaming in — half a prompt is worse than none. */}
+          {selectionActions && !isStreaming && (
+            <>
+              <button
+                type="button"
+                className="markdown-code-action"
+                title={t("chat.runInNewSession")}
+                onClick={() => selectionActions.runInNewSession(code)}
+              >
+                {t("chat.runInNewSession")}
+              </button>
+              <button
+                type="button"
+                className="markdown-code-action"
+                title={t("chat.newScheduledTask")}
+                onClick={() => selectionActions.newScheduledTask(code)}
+              >
+                {t("chat.newScheduledTask")}
+              </button>
+            </>
+          )}
           <button
             onClick={copy}
             className="markdown-code-action"
