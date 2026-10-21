@@ -10,6 +10,7 @@ import type { ChatScrollPosition } from "@/lib/chat-scroll-position";
 import { FileViewer } from "./FileViewer";
 import { TabBar, type Tab } from "./TabBar";
 import { movePanelTab, orderPanelTabs } from "@/lib/panel-tab-order";
+import { SelectionActionsContext, type SelectionActions } from "./selection-actions";
 import { openFileTab, saveFileViewerState, saveParkedFileViewerState, switchFileWorkspace, type ParkedFileWorkspace } from "./file-tab-state";
 import { SettingsPanel, SettingsSectionIcon } from "./SettingsPanel";
 import { ProjectTrustDialog, type ProjectTrustFailure } from "./ProjectTrustDialog";
@@ -1296,6 +1297,7 @@ export function AppShell() {
     setSchedulePrompt(prompt);
     setSettingsSection("schedules");
   }, []);
+
   // The sidebar calls this when the initial session is not in its list.
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
@@ -1504,6 +1506,22 @@ export function AppShell() {
   useLayoutEffect(() => {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
+  // The chat's code blocks offer the same two actions the selection toolbar does,
+  // on the block's own text (components/selection-actions.tsx). A failure there has
+  // no popover to show it in, so it is logged rather than left unhandled.
+  const selectionActions = useMemo<SelectionActions | null>(() => {
+    const cwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
+    if (!cwd) return null;
+    return {
+      cwd,
+      runInNewSession: (text) => {
+        void handleRunInNewSession(text, cwd).catch((error: unknown) => {
+          console.error("[pi-web] failed to run the selection in a new session:", error);
+        });
+      },
+      newScheduledTask: (text) => handleNewScheduledTask(text),
+    };
+  }, [selectedSession?.cwd, effectiveNewSessionCwd, handleRunInNewSession, handleNewScheduledTask]);
 
   // The bar above a fresh composer. Only a fresh composer moves, and only
   // somewhere else: the folder in use would remount it for nothing. The
@@ -2861,6 +2879,7 @@ export function AppShell() {
         {/* Chat content */}
         <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
           {showChat ? (
+            <SelectionActionsContext.Provider value={selectionActions}>
             <ChatWindow
               key={sessionKey}
               session={selectedSession}
@@ -2903,6 +2922,7 @@ export function AppShell() {
               unlockAudio={unlockAudio}
               holdAudio={holdAudio}
             />
+            </SelectionActionsContext.Provider>
           ) : initialCwdStatus === "validating" ? (
             <div
               role="status"
