@@ -42,3 +42,17 @@ test("the selection toolbar can start a scheduled task instead", () => {
   assert.ok(panel, "expected SettingsPanel to receive the prompt");
   assert.match(panel[0], /onSchedulePromptConsumed=/);
 });
+
+test("a code block offers both actions on its own text", async () => {
+  const codeSource = await readFile(new URL("./MermaidBlock.tsx", import.meta.url), "utf8");
+  const block = codeSource.match(/export const CodeBlock = memo\(function CodeBlock[\s\S]*?\n\}\);/);
+  assert.ok(block, "expected the CodeBlock component");
+  assert.match(block[0], /useSelectionActions\(\)/, "the block must read the chat's actions from context");
+  assert.match(block[0], /runInNewSession\(code\)/);
+  assert.match(block[0], /newScheduledTask\(code\)/);
+  // Half a prompt is worse than none: the buttons wait for the block to finish.
+  assert.match(block[0], /\{selectionActions && !isStreaming && \(/);
+
+  // The provider is the chat's, so the file viewer's code blocks stay read-only.
+  assert.match(shellSource, /<SelectionActionsContext\.Provider value=\{selectionActions\}>[\s\S]{0,200}<ChatWindow/);
+});
