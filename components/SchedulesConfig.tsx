@@ -91,11 +91,16 @@ export function SchedulesConfig({
   cwd,
   onClose,
   onOpenSession,
+  initialPrompt,
+  onInitialPromptConsumed,
   embedded = false,
 }: {
   cwd?: string | null;
   onClose: () => void;
   onOpenSession?: (sessionId: string) => void;
+  /** A prompt handed over from the chat (a selection asking for a scheduled task). */
+  initialPrompt?: string | null;
+  onInitialPromptConsumed?: () => void;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -152,6 +157,18 @@ export function SchedulesConfig({
     setDraft({ ...EMPTY_DRAFT, cwd: cwd ?? "" });
     setNotice(null);
   }, [cwd]);
+
+  // The chat's selection toolbar asks for a task with its prompt already written:
+  // the new-task form opens on it, in the project the selection came from. It is
+  // consumed once, so reopening the section later starts empty again.
+  useEffect(() => {
+    if (!initialPrompt) return;
+    setCreating(true);
+    setSelectedId(null);
+    setDraft({ ...EMPTY_DRAFT, cwd: cwd ?? "", prompt: initialPrompt });
+    setNotice(null);
+    onInitialPromptConsumed?.();
+  }, [initialPrompt, cwd, onInitialPromptConsumed]);
 
   const patch = useCallback(async (id: string, body: Record<string, unknown>) => {
     setBusy(true);

@@ -615,6 +615,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.askInCurrent": "在目前對話詢問",
     "chat.askInNewChat": "在新對話詢問",
     "chat.runInNewSession": "新建對話執行",
+    "chat.newScheduledTask": "新建定時任務",
     "chat.newQuoteChat": "關於選取文字的新對話",
     "chat.quoteIntro": "關於這段內容：",
     "chat.quoteQuestion": "我的問題是：",

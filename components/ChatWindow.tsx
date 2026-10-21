@@ -82,6 +82,8 @@ interface Props {
   onAskInNewChat?: (prompt: string, sourceSessionId: string, sourceEntryId: string) => Promise<void>;
   /** Runs the selected text as the first prompt of a brand-new session. */
   onRunInNewSession?: (prompt: string, cwd: string) => Promise<void>;
+  /** Opens a new scheduled task with the selected text as its prompt. */
+  onNewScheduledTask?: (prompt: string, cwd: string) => void;
   quoteSelectionEnabled?: boolean;
   initialPrompt?: string;
   onInitialPromptConsumed?: () => void;
@@ -249,7 +251,7 @@ function ProcessDetailsGroup({ messageCount, toolCallCount, durationMs, cacheMis
   );
 }
 
-export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, newSessionContextBar, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, onFilesUploaded, onOpenSubagent, onAskInNewChat, onRunInNewSession, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
+export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initialScrollPosition, onScrollPositionChange, sessionRunning, newSessionCwd, newSessionDraftKey, newSessionContextBar, initialNewSessionChoices, onNewSessionChoicesChange, onAgentEnd, onToolEnd, onAttentionNeeded, onSessionCreated, onSessionForked, modelsRefreshKey, chatInputRef, onBranchDataChange, onSystemPromptChange, onSystemToolsChange, onSystemInfoLoaderChange, onSessionStatsChange, onSessionStatsPanelOpen, onOpenSettings, onContextUsageChange, onOpenFile, onFilesUploaded, onOpenSubagent, onAskInNewChat, onRunInNewSession, onNewScheduledTask, quoteSelectionEnabled = false, initialPrompt, onInitialPromptConsumed, soundEnabled = true, onSoundToggle, playDoneSound = () => {}, unlockAudio, holdAudio }: Props) {
   const { t } = useI18n();
   const isMobile = useIsMobile();
   const completionNotificationsEnabled = session?.relation?.kind !== "subagent";
@@ -481,6 +483,16 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       setQuoteSubmitting(false);
     }
   }, [onRunInNewSession, quotedSelection, quoteSubmitting, session?.cwd, newSessionCwd, closeQuotedSelection, unlockAudio]);
+
+  // The same selection, kept for later: Settings › Scheduled tasks opens its
+  // new-task form on it, in this session's project.
+  const scheduleSelection = useCallback(() => {
+    const cwd = session?.cwd ?? newSessionCwd;
+    if (!quotedSelection || !onNewScheduledTask || !cwd) return;
+    onNewScheduledTask(quotedSelection.text, cwd);
+    window.getSelection()?.removeAllRanges();
+    closeQuotedSelection();
+  }, [onNewScheduledTask, quotedSelection, session?.cwd, newSessionCwd, closeQuotedSelection]);
 
   const initialPromptSentRef = useRef(false);
   useEffect(() => {
@@ -1474,6 +1486,22 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
                 <path d="M14 4h6v6M20 4l-8 8M17.5 13.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7.5a1 1 0 0 1 1-1h5.5" />
               </svg>
               <span>{t("chat.runInNewSession")}</span>
+            </button>
+          )}
+          {onNewScheduledTask && (session?.cwd ?? newSessionCwd) && (
+            <button
+              type="button"
+              className="file-viewer-icon-button"
+              title={t("chat.newScheduledTask")}
+              aria-label={t("chat.newScheduledTask")}
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={scheduleSelection}
+              style={{ width: "auto", height: 35, flex: "0 0 auto", gap: 5, padding: "0 10px", border: "none", fontSize: 12, fontWeight: 500 }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+              </svg>
+              <span>{t("chat.newScheduledTask")}</span>
             </button>
           )}
           {quoteError && !quoteInputOpen && (
