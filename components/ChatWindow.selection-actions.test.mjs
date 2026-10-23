@@ -56,3 +56,14 @@ test("a code block offers both actions on its own text", async () => {
   // The provider is the chat's, so the file viewer's code blocks stay read-only.
   assert.match(shellSource, /<SelectionActionsContext\.Provider value=\{selectionActions\}>[\s\S]{0,200}<ChatWindow/);
 });
+
+test("the toolbar copies the selection without closing itself", () => {
+  const handler = chatSource.match(/const copySelection = useCallback\(\(\) => \{[\s\S]*?\}, \[quotedSelection\]\);/);
+  assert.ok(handler, "expected the copySelection handler");
+  assert.match(handler[0], /copyText\(quotedSelection\.text\)/, "the selection is what lands on the clipboard");
+  assert.ok(
+    !handler[0].includes("closeQuotedSelection"),
+    "a copy leaves the toolbar open so the other actions stay reachable",
+  );
+  assert.match(chatSource, /\{t\(quoteCopied \? "i18n\.copied" : "i18n\.copy"\)\}/);
+});

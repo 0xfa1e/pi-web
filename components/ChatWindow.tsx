@@ -14,6 +14,7 @@ import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-fi
 import { getFinalAnswerViews, keepWrittenFiles, type FinalAnswerViews } from "@/lib/turn-views";
 import { formatTurnDuration, getTurnDurationMs } from "@/lib/turn-duration";
 import { buildQuotedSelection } from "@/lib/quoted-selection";
+import { copyText } from "@/lib/clipboard";
 import { dropMentionText, splitDroppedItems, uploadFiles, type DroppedItem } from "@/lib/file-upload-client";
 import { MessageView } from "./MessageView";
 import { MarkdownBody } from "./MarkdownBody";
@@ -336,6 +337,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   } | null>(null);
   const [quoteInputOpen, setQuoteInputOpen] = useState(false);
   const [quoteSubmitting, setQuoteSubmitting] = useState(false);
+  const [quoteCopied, setQuoteCopied] = useState(false);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const quotePopoverRef = useRef<HTMLDivElement | null>(null);
   const quoteChatInputRef = useRef<ChatInputHandle | null>(null);
@@ -343,6 +345,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
     setQuotedSelection(null);
     setQuoteInputOpen(false);
     setQuoteError(null);
+    setQuoteCopied(false);
   }, []);
 
   useEffect(() => {
@@ -483,6 +486,17 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
       setQuoteSubmitting(false);
     }
   }, [onRunInNewSession, quotedSelection, quoteSubmitting, session?.cwd, newSessionCwd, closeQuotedSelection, unlockAudio]);
+
+  // The plain one: the selection onto the clipboard, for whatever the reader is
+  // pasting into somewhere else. The toolbar stays open, so the other buttons
+  // remain reachable.
+  const copySelection = useCallback(() => {
+    if (!quotedSelection) return;
+    copyText(quotedSelection.text).then(() => {
+      setQuoteCopied(true);
+      setTimeout(() => setQuoteCopied(false), 1500);
+    }).catch(() => {});
+  }, [quotedSelection]);
 
   // The same selection, kept for later: Settings › Scheduled tasks opens its
   // new-task form on it, in this session's project.
@@ -1512,6 +1526,20 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
               <span>{t("chat.newScheduledTask")}</span>
             </button>
           )}
+          <button
+            type="button"
+            className="file-viewer-icon-button"
+            title={t("i18n.copy")}
+            aria-label={t("i18n.copy")}
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={copySelection}
+            style={{ width: "auto", height: 35, flex: "0 0 auto", gap: 5, padding: "0 10px", border: "none", fontSize: 12, fontWeight: 500 }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2" /><path d="M15 6V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1" />
+            </svg>
+            <span>{t(quoteCopied ? "i18n.copied" : "i18n.copy")}</span>
+          </button>
           {quoteError && !quoteInputOpen && (
             <div role="alert" style={{ flex: "1 0 100%", maxWidth: 260, color: "#dc2626", fontSize: 12, overflowWrap: "anywhere" }}>{quoteError}</div>
           )}
