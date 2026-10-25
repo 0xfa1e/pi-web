@@ -13,7 +13,7 @@ export interface SelectionActions {
   /** The project the new session (or task) belongs to. */
   cwd: string;
   /** Runs `text` as the first prompt of a brand-new session in this window. */
-  runInNewSession: (text: string) => void;
+  runInNewSession: (text: string) => Promise<void>;
   /** Opens Settings › Scheduled tasks' new-task form on `text`. */
   newScheduledTask: (text: string) => void;
 }

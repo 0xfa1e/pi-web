@@ -67,3 +67,16 @@ test("the toolbar copies the selection without closing itself", () => {
   );
   assert.match(chatSource, /\{t\(quoteCopied \? "i18n\.copied" : "i18n\.copy"\)\}/);
 });
+
+test("a code block's two actions confirm the click for a moment, like Copy", async () => {
+  const codeSource = await readFile(new URL("./MermaidBlock.tsx", import.meta.url), "utf8");
+  assert.match(codeSource, /const DONE_FLASH_MS = 2000;/, "2 seconds, the user's number");
+  const block = codeSource.match(/export const CodeBlock = memo\(function CodeBlock[\s\S]*?\n\}\);/);
+  assert.ok(block, "expected the CodeBlock component");
+  // Only a request that answered confirms the session one; a failure stays silent.
+  assert.match(block[0], /runInNewSession\(code\)\.then\(\s*\(\) => flashDone\("session"\)/);
+  assert.match(block[0], /newScheduledTask\(code\);\s*flashDone\("task"\)/);
+  assert.match(block[0], /t\(done === "session" \? "chat\.createdSession" : "chat\.runInNewSession"\)/);
+  assert.match(block[0], /t\(done === "task" \? "chat\.createdScheduledTask" : "chat\.newScheduledTask"\)/);
+  assert.match(block[0], /setTimeout\([\s\S]*?DONE_FLASH_MS\)/, "the label returns on its own");
+});
