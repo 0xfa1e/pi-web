@@ -1507,18 +1507,14 @@ export function AppShell() {
     activeNewSessionDraftKeyRef.current = newSessionDraftKey;
   }, [newSessionDraftKey]);
   // The chat's code blocks offer the same two actions the selection toolbar does,
-  // on the block's own text (components/selection-actions.tsx). A failure there has
-  // no popover to show it in, so it is logged rather than left unhandled.
+  // on the block's own text (components/selection-actions.tsx). The promise is the
+  // button's answer: the block confirms the click on what it resolves with.
   const selectionActions = useMemo<SelectionActions | null>(() => {
     const cwd = selectedSession?.cwd ?? effectiveNewSessionCwd;
     if (!cwd) return null;
     return {
       cwd,
-      runInNewSession: (text) => {
-        void handleRunInNewSession(text, cwd).catch((error: unknown) => {
-          console.error("[pi-web] failed to run the selection in a new session:", error);
-        });
-      },
+      runInNewSession: (text) => handleRunInNewSession(text, cwd),
       newScheduledTask: (text) => handleNewScheduledTask(text),
     };
   }, [selectedSession?.cwd, effectiveNewSessionCwd, handleRunInNewSession, handleNewScheduledTask]);

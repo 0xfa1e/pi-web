@@ -308,6 +308,9 @@ export function DiagramZoomDialog({ title, label, onClose, children }: {
   );
 }
 
+/** How long a code block's action button shows that its click went through. */
+const DONE_FLASH_MS = 2000;
+
 interface CodeBlockProps {
   code: string;
   lang: string;
@@ -372,6 +375,22 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
   const { t } = useI18n();
   const selectionActions = useSelectionActions();
   const [copied, setCopied] = useState(false);
+  // Which of the two chat actions just went through, for the same reason Copy says
+  // "Copied": a click that navigates away (or opens Settings over this block) gives
+  // no answer of its own, so the button confirms itself for a moment.
+  const [done, setDone] = useState<"session" | "task" | null>(null);
+  const doneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+  }, []);
+  const flashDone = (kind: "session" | "task") => {
+    if (doneTimerRef.current) clearTimeout(doneTimerRef.current);
+    setDone(kind);
+    doneTimerRef.current = setTimeout(() => {
+      setDone(null);
+      doneTimerRef.current = null;
+    }, DONE_FLASH_MS);
+  };
   // Loading starts with the first block, streaming or not, so a streamed
   // reply usually finds the languages ready when it ends.
   const languagesReady = usePrismLanguages();
@@ -406,17 +425,27 @@ export const CodeBlock = memo(function CodeBlock({ code, lang, headerAction, isS
                 type="button"
                 className="markdown-code-action"
                 title={t("chat.runInNewSession")}
-                onClick={() => selectionActions.runInNewSession(code)}
+                onClick={() => {
+                  selectionActions.runInNewSession(code).then(
+                    () => flashDone("session"),
+                    (error: unknown) => {
+                      console.error("[pi-web] failed to run the block in a new session:", error);
+                    },
+                  );
+                }}
               >
-                {t("chat.runInNewSession")}
+                {t(done === "session" ? "chat.createdSession" : "chat.runInNewSession")}
               </button>
               <button
                 type="button"
                 className="markdown-code-action"
                 title={t("chat.newScheduledTask")}
-                onClick={() => selectionActions.newScheduledTask(code)}
+                onClick={() => {
+                  selectionActions.newScheduledTask(code);
+                  flashDone("task");
+                }}
               >
-                {t("chat.newScheduledTask")}
+                {t(done === "task" ? "chat.createdScheduledTask" : "chat.newScheduledTask")}
               </button>
             </>
           )}
