@@ -61,7 +61,7 @@ git diff --stat local-base..local       # 补丁改动面
 
 ### 改动面
 
-以 `v0.12.2` 为基准，只**修改**了 12 个文件，其余都是新增：
+以 `v0.13.0` 为基准，只**修改**了 12 个文件，其余都是新增：
 
 ```
 AGENTS.md                           app/settings.css
@@ -86,7 +86,15 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    把这个 helper 重新加回来，并接到 SettingsPanel 的 `onOpenSession` 上。**这个断链不会产生冲突**
    —— 补丁能干净应用，然后 `tsc` 报 `Cannot find name 'handleOpenSession'`。所以 rebase 之后
    **必须跑一次 `tsc`**，不能只看「没有 conflict」。
-2. **`components/ChatWindow.tsx` → 时间戳补丁必然冲突，而且是两块**（v0.12.2 实测）。原因：
+2. **`components/ChatWindow.tsx` → `ChatWindow` 的 props 解构行会冲突，而且是两处**（v0.13.0 实测）。
+   上游给 props 加了字段（v0.12.1→v0.12.2 是 `withNotices` 相关，v0.13.0 是
+   `onDebugSnapshotReaderChange`），而我们的补丁 4 / 补丁 5 也在同一行插 `onRunInNewSession` /
+   `onNewScheduledTask`，两边改的是**同一个整行**，git 无法自动合并。解决方式：取上游那一行，
+   然后插进我们自己的字段（顺序保持上游原有字段不动，我们的字段追加在 `onAskInNewChat` 后面）。
+   校验：解构行里同时有 `onDebugSnapshotReaderChange`、`onRunInNewSession`、`onNewScheduledTask`，
+   且不再有冲突标记。
+3. **`components/ChatWindow.tsx` → 时间戳补丁会冲突，两块**（v0.12.2 实测冲突；v0.13.0 自动合并通过，
+   但仍要按下面的方式校验）。原因：
    上游把渲染 key 从 `entryIds[idx] ?? idx` 换成了 `messageKeys[idx]`（新增 `lib/message-keys.ts`），
    又给 `renderMessage` 的 options 加了 `withNotices`，两处都跟我们的补丁重叠。解决方式：
    - 第一块：`const messageKey = messageKeys[idx];` **取上游的**（别退回 `entryIds`），`showTimestamp`
@@ -95,13 +103,31 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    校验：`git grep -n showTimestamp components/ChatWindow.tsx` 只剩「options 声明 / 我们的赋值 /
    options 覆盖 / 传给 MessageView」四处，且文件里不再有冲突标记。已开 rerere，第二次会自动重放——
    但**只用 rerere 自动结果不够，必须再跑 `tsc`**（2026-10 这次 rerere 记录的旧解只覆盖了第一块）。
-3. **`instrumentation-node.ts` → 两边都要保留**。上游往这里加 `readHttpIdleTimeoutMs()` 和
+4. **`instrumentation-node.ts` → import 区和函数体都可能冲突，两边都要保留**。上游往这里加
+   `readHttpIdleTimeoutMs()`、v0.13.0 又加了 `applyCodemodeWorkerDefault()`（`@/lib/codemode-workers`）和
    预热 pi SDK 的 `import("@earendil-works/pi-coding-agent")`，我们加 `startScheduleRunner()` /
-   `stopScheduleRunner()`。合并后必须是：`configureHttpDispatcher(readHttpIdleTimeoutMs())`、紧跟
-   `startScheduleRunner()`、`shutdownStreams` 里先 `stopScheduleRunner()` 再关流、末尾保留 SDK 预热。
-4. **`app/settings.css` / i18n / `SettingsPanel.tsx` 一般不冲突**，因为两边改的是同文件的不同行区
+   `stopScheduleRunner()`。v0.13.0 实测：import 区直接冲突（上游的 codemode import 顶掉了我们的
+   schedule import），解成两行并存。合并后必须是：`applyCodemodeWorkerDefault()` →
+   `configureHttpDispatcher(readHttpIdleTimeoutMs())` → `startScheduleRunner()`、
+   `shutdownStreams` 里先 `stopScheduleRunner()` 再关流、末尾保留 SDK 预热。
+5. **`app/settings.css` / i18n / `SettingsPanel.tsx` 一般不冲突**，因为两边改的是同文件的不同行区
    （上游改 `GeneralSettings`、skill/mcp 样式；我们改 dialog 宽度、tab 布局、schedules 文案）。
    真冲突时按「两边都留」处理：schedules 那个 tab 是我们加的，不能为了省事丢掉。
+
+### rebase 之后的自查清单（不看 conflict，看结果）
+
+```bash
+node_modules/.bin/tsc --noEmit                                   # 断链只有它抓得住
+git grep -n "<<<<<<<\|>>>>>>>" -- '*.ts' '*.tsx' '*.css'          # 别把冲突标记带进构建
+git grep -n showTimestamp components/ChatWindow.tsx             # 应为 4 处
+bash scripts/local-deploy.sh --with-tests                        # 全量测试 + 构建 + 重启
+```
+
+`npm test` 里 `lib/session-membership.integration.test.mjs` 的两个用例（`independent SDK writes
+refresh cached lists`）在**整包并行跑**时会偶发 15s 超时（单独跑 3~6s 通过，2026-10 v0.13.0 同步
+实测）。先单独 `node --test lib/session-membership.integration.test.mjs` 复跑确认，别当成回归；
+确认是偶发后直接重跑全量（第二次 3218 通过 / 0 失败）。注意 `set -e` 会让测试失败中断部署，
+这一步挂了就还没构建、没重启，线上仍是旧版本。
 
 ## 同步上游新版本（runbook）
 
@@ -120,7 +146,7 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 #    动手前先确保 local 工作区是干净的：有未提交的 fork 改动就先 commit，不然会跟着 rebase 跑
 git status --short
 git checkout local
-git rebase v0.12.2
+git rebase v0.13.0
 #   冲突：改完 → git add <file> → git rebase --continue
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
@@ -133,7 +159,7 @@ node_modules/.bin/tsc --noEmit
 scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
-git tag -f local-base v0.12.2
+git tag -f local-base v0.13.0
 git push --force-with-lease origin local
 ```
 
