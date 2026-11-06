@@ -30,13 +30,15 @@ git diff --stat local-base..local       # 补丁改动面
    只显示最后一个时间戳、且用 `toLocaleTimeString` 输出 AM/PM；改成每条都显示、固定 24 小时制。
 4. **`feat(chat): run the selected text as a prompt in a new session`** — 选中文字后的浮动按钮多一个
    「新建会话执行」：选中内容**原样当 prompt**，`POST /api/agent/new {cwd, type:"prompt", message}`
-   一次请求建好新会话并跑起来，然后本窗口像点会话列表一样切到它（`openCreatedSession()`，和
-   `handleSessionForked` 同一条路），侧边栏刷新出这一行。**不新开浏览器标签页**：它本质是「新建
+   一次请求建好新会话并跑起来，然后本窗口像点会话列表一样切到它（`handleSessionForked()`，和
+   侧边栏新建、分支 fork 同一条路），侧边栏刷新出这一行。**不新开浏览器标签页**：它本质是「新建
    会话 + 自动提交」的快捷方式，界面表现和新建一致。
-   和另外两个按钮的区别：不包引用块、不 fork（不需要 `sourceEntryId`）、不需要当前对话正在跑。
+   和另外几个按钮的区别：不包引用块、不 fork（不需要 `sourceEntryId`）、不需要当前对话正在跑。
    同一个动作还有第二个入口：聊天里每个代码块的头部（`复制` 左边）。入口由
    `components/selection-actions.tsx` 的 context 提供，Provider 只挂在 AppShell 的 `<ChatWindow>` 外面，
    所以文件查看器里同样的 `CodeBlock` 不会长出这两个按钮。
+   注意：v0.15.0 起上游删掉了自己的「Ask in new chat」（`onAskInNewChat` / `handleAskInNewChat`，
+   改成引号按钮只是往输入框塞一段 blockquote），这条补丁的按钮因此排在「引用 / 在侧聊询问」之后。
    代码块上的两个按钮点完后会短暂变成「已新建会话」/「已新建任务」（`DONE_FLASH_MS = 2000`，和
    「复制」→「已复制」同一套手感）；会话那个只在 `/api/agent/new` 真的返回 sessionId 之后才变，
    失败就保持原样并 `console.error`（没有弹层可以报错）。
@@ -61,7 +63,7 @@ git diff --stat local-base..local       # 补丁改动面
 
 ### 改动面
 
-以 `v0.13.0` 为基准，只**修改**了 12 个文件，其余都是新增：
+以 `v0.15.0` 为基准，只**修改**了 12 个文件，其余都是新增：
 
 ```
 AGENTS.md                           app/settings.css
@@ -90,9 +92,10 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    上游给 props 加了字段（v0.12.1→v0.12.2 是 `withNotices` 相关，v0.13.0 是
    `onDebugSnapshotReaderChange`），而我们的补丁 4 / 补丁 5 也在同一行插 `onRunInNewSession` /
    `onNewScheduledTask`，两边改的是**同一个整行**，git 无法自动合并。解决方式：取上游那一行，
-   然后插进我们自己的字段（顺序保持上游原有字段不动，我们的字段追加在 `onAskInNewChat` 后面）。
+   然后插进我们自己的字段（顺序保持上游原有字段不动，我们的字段追加在 `quoteSelectionEnabled` 前面）。
    校验：解构行里同时有 `onDebugSnapshotReaderChange`、`onRunInNewSession`、`onNewScheduledTask`，
-   且不再有冲突标记。
+   且不再有冲突标记。v0.15.0 实测：上游删掉了 `onAskInNewChat`，补丁 4 的提交里还带着它，冲突照旧，
+   解的时候**别把 `onAskInNewChat` 抄回来**（它在上游已经不存在了）。
 3. **`components/ChatWindow.tsx` → 时间戳补丁会冲突，两块**（v0.12.2 实测冲突；v0.13.0 自动合并通过，
    但仍要按下面的方式校验）。原因：
    上游把渲染 key 从 `entryIds[idx] ?? idx` 换成了 `messageKeys[idx]`（新增 `lib/message-keys.ts`），
@@ -113,20 +116,56 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
 5. **`app/settings.css` / i18n / `SettingsPanel.tsx` 一般不冲突**，因为两边改的是同文件的不同行区
    （上游改 `GeneralSettings`、skill/mcp 样式；我们改 dialog 宽度、tab 布局、schedules 文案）。
    真冲突时按「两边都留」处理：schedules 那个 tab 是我们加的，不能为了省事丢掉。
+   v0.15.0 具体实测：
+   - `SettingsPanel.tsx` 的 import 行会冲突：上游加了 `ConfigDetailNavigationContext` /
+     `ConfigDetailNavigation` + `useMemo`（手机端一层层进出设置用的），我们加 `SchedulesConfig`。
+     解成一行同时有 `SchedulesConfig` 和上游那四个名字。同一文件末尾也会冲突：我们的
+     `sectionHost("schedules", …)` 必须留在上游的 `</ConfigDetailNavigationContext.Provider>` **里面**。
+   - `AppShell.tsx` 里相邻的两个 `useState` 会冲突（上游的 `settingsOpenAtHome` vs 我们的
+     `schedulePrompt`），两边都要。
+   - i18n 三个文件每次都冲突（新按钮要加 key）。解的时候**只取我们的地区文案 + 上游新增的那一个 key**，
+     千万别把上游的整块 blockquote 文案（`chat.quoteIntro` / `chat.quoteQuestion` /
+     `chat.quoteForkFailed`）也抄回来：里面有一条和我们重复的 `chat.newQuoteChat`，抄回来
+     就是**重复 key**（后者静默覆盖，`tsc` 不报，构建也不报）。
+6. **上游改名的 helper 不要自己承担**（v0.15.0 教训）。补丁 4 当年把 `handleSessionForked` 改名为
+   `openCreatedSession`，结果每个提交（分支 fork、切会话、补丁 4/5/代码块入口）都要跟上游那一行
+   撞一次。v0.15.0 已经改回用上游的 `handleSessionForked`，我们只多一个 `handleRunInNewSession`。
+   **以后不要给上游的 helper 改名**，要新增就新增一个自己的。
+7. **`components/SchedulesConfig.tsx` 的 i18n key 别用 `common.*`**（v0.15.0 自查发现的老 bug）。
+   上游的 `common.*` 只有 `ok/language/models/skills/agents/plugins/settings`，`common.close`
+   和 `common.cancel` **从上就没有**，所以我们那个关闭按钮和取消按钮一直直接把 key 当字面量渲染。
+   已改成 `i18n.close` / `i18n.cancel`。教训：`useI18n().t` 的签名是 `(key: string)`，不受类型
+   保护，写错 key 既不报错也不报 lint。所以自查清单里那一步 key 比对不是可选项。
 
 ### rebase 之后的自查清单（不看 conflict，看结果）
 
 ```bash
-node_modules/.bin/tsc --noEmit                                   # 断链只有它抓得住
+node_modules/.bin/tsc --noEmit                                   # 断链 + 重复 JSX 属性只有它抓得住
 git grep -n "<<<<<<<\|>>>>>>>" -- '*.ts' '*.tsx' '*.css'          # 别把冲突标记带进构建
 git grep -n showTimestamp components/ChatWindow.tsx             # 应为 4 处
+npm run lint                                                     # react-hooks/purity 等
 bash scripts/local-deploy.sh --with-tests                        # 全量测试 + 构建 + 重启
 ```
 
-`npm test` 里 `lib/session-membership.integration.test.mjs` 的两个用例（`independent SDK writes
-refresh cached lists`）在**整包并行跑**时会偶发 15s 超时（单独跑 3~6s 通过，2026-10 v0.13.0 同步
-实测）。先单独 `node --test lib/session-membership.integration.test.mjs` 复跑确认，别当成回归；
-确认是偶发后直接重跑全量（第二次 3218 通过 / 0 失败）。注意 `set -e` 会让测试失败中断部署，
+**`tsc` 和 `lint` 都不能省。** 它们各自挺住了一类 git 看不见、测试也测不出来的错：
+
+- v0.15.0 这次 `tsc` 报 `TS17001: JSX elements cannot have multiple attributes with the same name`
+  —— `onOpenSubagent` 被两边各加了一遍，git **自动合并掉了、没有冲突标记**。
+- v0.13.0 那次 `tsc` 抓的是 `Cannot find name 'handleOpenSession'`（同样的无标记断链）。
+- v0.15.0 这次 `lint` 报 `react-hooks/purity`：上游新版的 eslint 配置把渲染期调 `Date.now()`
+  当 error，撞了我们 `SchedulesConfig` 里的 `useMemo(() => new Date(Date.now() + 10*60*1000))`。
+  已改成在点击「一次性」按钮时才算（语义也更对：默认值是「打开表单后 10 分钟」）。
+  **注意：这条只在 `npm install` 拉到新依赖之后才会出现**，先跑 lint 再动手改别的不相干代码。
+
+`npm test` 的偶发超时（都是整包并行跑才出，单独跑就过）：
+
+- `lib/session-membership.integration.test.mjs` 的两个 `independent SDK writes refresh cached lists`
+  （15s 超时，单独跑 3~6s 通过；v0.13.0 实测）。
+- `lib/mcp-host.integration.test.mjs` 的 `a stdio server that cannot start is failed with what it
+  wrote to stderr`（断言拿到 `connecting` 而不是 `failed`，单独跑 275ms 通过；v0.15.0 实测）。
+
+两个都先单独 `node --test <文件>` 复跑确认，别当成回归；确认是偶发就重跑全量
+（v0.15.0 第二次 3306 通过 / 0 失败）。注意 `set -e` 会让测试失败中断部署，
 这一步挂了就还没构建、没重启，线上仍是旧版本。
 
 ## 同步上游新版本（runbook）
@@ -146,12 +185,13 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 #    动手前先确保 local 工作区是干净的：有未提交的 fork 改动就先 commit，不然会跟着 rebase 跑
 git status --short
 git checkout local
-git rebase v0.13.0
+git rebase v0.15.0
 #   冲突：改完 → git add <file> → git rebase --continue
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
-#   解决完先按上面「已知的坑」自查一遍，尤其要跑 tsc：没有 conflict 不等于能编译
+#   解决完先按上面「已知的坑」自查一遍，尤其要跑 tsc / lint：没有 conflict 不等于能编译
 node_modules/.bin/tsc --noEmit
+npm run lint
 
 # 4) 校验 + 构建 + 重启，一条命令
 #    它自己会跑 tsc / eslint，--with-tests 再加 npm test；
@@ -159,8 +199,9 @@ node_modules/.bin/tsc --noEmit
 scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
-git tag -f local-base v0.13.0
+git tag -f local-base v0.15.0
 git push --force-with-lease origin local
+git push --force origin local-base   # 基准标签是移动的，必须 force
 ```
 
 回滚：
