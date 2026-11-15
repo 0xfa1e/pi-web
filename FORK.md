@@ -63,7 +63,7 @@ git diff --stat local-base..local       # 补丁改动面
 
 ### 改动面
 
-以 `v0.15.0` 为基准，只**修改**了 12 个文件，其余都是新增：
+以 `v0.17.0` 为基准，只**修改**了 12 个文件，其余都是新增：
 
 ```
 AGENTS.md                           app/settings.css
@@ -96,8 +96,15 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    校验：解构行里同时有 `onDebugSnapshotReaderChange`、`onRunInNewSession`、`onNewScheduledTask`，
    且不再有冲突标记。v0.15.0 实测：上游删掉了 `onAskInNewChat`，补丁 4 的提交里还带着它，冲突照旧，
    解的时候**别把 `onAskInNewChat` 抄回来**（它在上游已经不存在了）。
-3. **`components/ChatWindow.tsx` → 时间戳补丁会冲突，两块**（v0.12.2 实测冲突；v0.13.0 自动合并通过，
-   但仍要按下面的方式校验）。原因：
+   v0.17.0 实测（新坑，两个补丁各撞一次）：上游在这期间给 props 加了 `onSessionEnded`（v0.15.0 还没有）。
+   补丁 4 那次我按规矩取了上游行，是对的；补丁 5 那次图省事取了冲突里“我们那边”的整行（= 基于 v0.15.0
+   的旧行），于是 `onSessionEnded` **被静默丢掉**，`tsc` 才报 `TS18004: No value exists in scope for the
+   shorthand property 'onSessionEnded'`。规矩就一条：**每次都从上游那一行重抄一遍，再插我们两个字段**，
+   不要拿“我们那边”的行当底稿；改完顺手 `git diff v0.17.0..local -- components/ChatWindow.tsx` 扫一眼
+   props 行，注释字段一个都不能比上游少。
+3. **`components/ChatWindow.tsx` → 时间戳补丁会冲突，两块**（v0.12.2 实测冲突；v0.13.0 自动合并通过；
+   v0.17.0 又回到冲突：上游那一版仍是老的「一条消息只显示最后一个时间戳 + `isStreaming` 判定」循环，
+   取我们那两行即可，别把循环抄回来）。原因：
    上游把渲染 key 从 `entryIds[idx] ?? idx` 换成了 `messageKeys[idx]`（新增 `lib/message-keys.ts`），
    又给 `renderMessage` 的 options 加了 `withNotices`，两处都跟我们的补丁重叠。解决方式：
    - 第一块：`const messageKey = messageKeys[idx];` **取上游的**（别退回 `entryIds`），`showTimestamp`
@@ -137,9 +144,15 @@ lib/i18n/messages/{en,zh-CN,zh-TW}.ts
    已改成 `i18n.close` / `i18n.cancel`。教训：`useI18n().t` 的签名是 `(key: string)`，不受类型
    保护，写错 key 既不报错也不报 lint。所以自查清单里那一步 key 比对不是可选项。
 
+8. **依赖版本跟着上游走**（v0.17.0 教训）。v0.15.0→v0.17.0 把 `@earendil-works/pi-*` 从 1.5.0 抬到 1.5.2，
+   `package-lock.json` 也跟着动。`local-deploy.sh` 自己会 `npm install`，但**想先跑 `tsc`/`lint` 就必须
+   先手动 `npm install`**：拿旧 `node_modules` 跑出来的报错（尤其是 eslint 规则变化、SDK 类型签名）会
+   把你骗去改不相干的代码。顺序固定成：`npm install` → `tsc` → `lint` → 部署。
+
 ### rebase 之后的自查清单（不看 conflict，看结果）
 
 ```bash
+npm install                                                      # 先对齐依赖，否则下面两步报的错是假的
 node_modules/.bin/tsc --noEmit                                   # 断链 + 重复 JSX 属性只有它抓得住
 git grep -n "<<<<<<<\|>>>>>>>" -- '*.ts' '*.tsx' '*.css'          # 别把冲突标记带进构建
 git grep -n showTimestamp components/ChatWindow.tsx             # 应为 4 处
@@ -151,6 +164,8 @@ bash scripts/local-deploy.sh --with-tests                        # 全量测试 
 
 - v0.15.0 这次 `tsc` 报 `TS17001: JSX elements cannot have multiple attributes with the same name`
   —— `onOpenSubagent` 被两边各加了一遍，git **自动合并掉了、没有冲突标记**。
+- v0.17.0 这次 `tsc` 报 `TS18004: No value exists in scope for the shorthand property 'onSessionEnded'`
+  —— 解 props 行时取了旧行，把上游新加的 `onSessionEnded` 丢了（见坑 2）。
 - v0.13.0 那次 `tsc` 抓的是 `Cannot find name 'handleOpenSession'`（同样的无标记断链）。
 - v0.15.0 这次 `lint` 报 `react-hooks/purity`：上游新版的 eslint 配置把渲染期调 `Date.now()`
   当 error，撞了我们 `SchedulesConfig` 里的 `useMemo(() => new Date(Date.now() + 10*60*1000))`。
@@ -185,7 +200,7 @@ git checkout main && git merge --ff-only upstream/main && git push origin main
 #    动手前先确保 local 工作区是干净的：有未提交的 fork 改动就先 commit，不然会跟着 rebase 跑
 git status --short
 git checkout local
-git rebase v0.15.0
+git rebase v0.17.0
 #   冲突：改完 → git add <file> → git rebase --continue
 #   已开启 rerere，以前解决过的冲突会自动重放
 #   想放弃：git rebase --abort
@@ -199,7 +214,7 @@ npm run lint
 scripts/local-deploy.sh --with-tests
 
 # 5) 更新基准标签并推送
-git tag -f local-base v0.15.0
+git tag -f local-base v0.17.0
 git push --force-with-lease origin local
 git push --force origin local-base   # 基准标签是移动的，必须 force
 ```
